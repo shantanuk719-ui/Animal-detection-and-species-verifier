@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Animal Detection Hub · IILM University</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Variables ─────────────────────────────────────────── */
+    :root {
+      --bg:        #080e0a;
+      --surface:   #0e1912;
+      --card:      #111f15;
+      --border:    #1e3325;
+      --green:     #3ddc65;
+      --green-dim: #25a048;
+      --amber:     #f0b429;
+      --red:       #e05252;
+      --text:      #d8e8da;
+      --muted:     #6b8c72;
+      --font-serif: 'Cormorant Garamond', serif;
+      --font-sans:  'DM Sans', sans-serif;
+      --font-mono:  'JetBrains Mono', monospace;
+      --radius:     14px;
+      --shadow:     0 8px 40px rgba(0,0,0,0.6);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Noise texture overlay ─────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── Ambient glow blobs ────────────────────────────────── */
+    .blob {
+      position: fixed; border-radius: 50%;
+      filter: blur(120px); pointer-events: none; z-index: 0; opacity: 0.18;
+    }
+    .blob-1 { width: 600px; height: 600px; background: #1a6b30; top: -200px; left: -150px; }
+    .blob-2 { width: 500px; height: 500px; background: #3d6e25; bottom: -200px; right: -150px; }
+    .blob-3 { width: 300px; height: 300px; background: #6b4a10; top: 40%; left: 50%; transform: translate(-50%,-50%); }
+
+    /* ── Layout ────────────────────────────────────────────── */
+    .wrapper { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 0 24px 80px; }
+
+    /* ── Header ────────────────────────────────────────────── */
+    header {
+      padding: 40px 0 28px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px;
+    }
+    .header-left {}
+    .header-badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(61,220,101,0.08); border: 1px solid rgba(61,220,101,0.2);
+      color: var(--green); font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase; padding: 5px 12px; border-radius: 99px;
+      font-weight: 600; margin-bottom: 14px;
+    }
+    .header-badge span { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(2rem, 5vw, 3.4rem);
+      font-weight: 700; line-height: 1.1;
+      color: #fff;
+      letter-spacing: -0.02em;
+    }
+    h1 em { color: var(--green); font-style: normal; }
+    .subtitle {
+      margin-top: 8px; color: var(--muted);
+      font-size: 14px; font-weight: 400; line-height: 1.6;
+      max-width: 520px;
+    }
+    .meta {
+      text-align: right; font-size: 12px; color: var(--muted);
+      font-weight: 400; line-height: 1.8;
+    }
+    .meta strong { color: var(--text); font-weight: 600; }
+
+    /* ── Animal pill strip ─────────────────────────────────── */
+    .species-strip {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      margin: 28px 0 36px;
+    }
+    .species-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--card); border: 1px solid var(--border);
+      padding: 6px 14px; border-radius: 99px;
+      font-size: 13px; font-weight: 500; color: var(--text);
+      transition: border-color .2s, background .2s;
+    }
+    .species-pill:hover { border-color: var(--green-dim); background: rgba(61,220,101,0.06); }
+
+    /* ── Section headings ──────────────────────────────────── */
+    .section-label {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--muted); font-weight: 600; margin-bottom: 18px;
+    }
+    .section-label::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    /* ── Main two-column grid ──────────────────────────────── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 860px) { .main-grid { grid-template-columns: 1fr; } }
+
+    /* ── Cards ─────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+    .card-title {
+      font-family: var(--font-serif);
+      font-size: 1.4rem; font-weight: 700;
+      color: #fff; margin-bottom: 6px;
+    }
+    .card-desc { font-size: 13px; color: var(--muted); margin-bottom: 24px; line-height: 1.6; }
+
+    /* ── Buttons ───────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 24px; border-radius: 10px;
+      font-family: var(--font-sans); font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: all .18s; border: none; outline: none;
+    }
+    .btn-primary {
+      background: var(--green); color: #050d06;
+    }
+    .btn-primary:hover { background: #54e87a; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(61,220,101,0.3); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .btn-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { border-color: var(--green-dim); color: var(--green); }
+
+    /* ── Training panel ────────────────────────────────────── */
+    .train-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 22px; }
+
+    .status-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px 18px;
+      font-size: 13px; color: var(--muted);
+      margin-bottom: 18px; min-height: 48px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .status-box .dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      background: var(--muted);
+    }
+    .status-box.training .dot { background: var(--amber); animation: pulse 1s infinite; }
+    .status-box.done    .dot { background: var(--green); }
+    .status-box.error   .dot { background: var(--red); }
+
+    /* ── Epoch progress ────────────────────────────────────── */
+    .epoch-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px; font-size: 12px; color: var(--muted);
+    }
+    .epoch-row strong { color: var(--text); font-weight: 600; font-family: var(--font-mono); }
+    .progress-track {
+      height: 6px; background: var(--border); border-radius: 99px; overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .progress-fill {
+      height: 100%; background: linear-gradient(90deg, var(--green-dim), var(--green));
+      border-radius: 99px; transition: width .5s ease;
+      width: 0%;
+    }
+
+    /* ── Metrics row ───────────────────────────────────────── */
+    .metrics-row {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+      margin-bottom: 20px;
+    }
+    .metric-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px; text-align: center;
+    }
+    .metric-value {
+      font-family: var(--font-mono); font-size: 18px;
+      font-weight: 500; color: var(--green);
+    }
+    .metric-label { font-size: 10px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.1em; }
+
+    /* ── Log console ───────────────────────────────────────── */
+    .console {
+      background: #050a07;
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+      font-family: var(--font-mono); font-size: 12px; color: #7db87d;
+      height: 180px; overflow-y: auto; line-height: 1.8;
+    }
+    .console::-webkit-scrollbar { width: 4px; }
+    .console::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    /* ── Upload zone ───────────────────────────────────────── */
+    #drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 44px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+      margin-bottom: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    #drop-zone:hover, #drop-zone.dragover {
+      border-color: var(--green-dim);
+      background: rgba(61,220,101,0.04);
+    }
+    #drop-zone .dz-icon { font-size: 40px; margin-bottom: 12px; }
+    #drop-zone .dz-text { font-size: 14px; color: var(--muted); }
+    #drop-zone .dz-text strong { color: var(--text); }
+    #file-input { display: none; }
+
+    /* Preview image */
+    #preview-wrap { display: none; margin-bottom: 16px; }
+    #preview-img {
+      width: 100%; max-height: 240px; object-fit: cover;
+      border-radius: 10px; border: 1px solid var(--border);
+    }
+
+    /* ── Result panel ──────────────────────────────────────── */
+    #result-panel { display: none; }
+
+    .result-hero {
+      display: flex; align-items: center; gap: 18px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px; margin-bottom: 18px;
+    }
+    .result-icon { font-size: 52px; line-height: 1; }
+    .result-name {
+      font-family: var(--font-serif);
+      font-size: 2rem; font-weight: 700; color: #fff;
+      text-transform: capitalize;
+    }
+    .result-conf {
+      font-size: 13px; color: var(--muted); margin-top: 4px;
+    }
+    .result-conf strong { color: var(--green); font-family: var(--font-mono); }
+
+    .warning-box {
+      background: rgba(240,180,41,0.08);
+      border: 1px solid rgba(240,180,41,0.3);
+      border-radius: 10px; padding: 14px 18px;
+      font-size: 13px; color: #f0b429;
+      margin-bottom: 18px; display: none;
+    }
+
+    .bar-list { display: flex; flex-direction: column; gap: 10px; }
+    .bar-row { display: flex; flex-direction: column; gap: 5px; }
+    .bar-label-row {
+      display: flex; justify-content: space-between;
+      font-size: 12px; color: var(--muted);
+    }
+    .bar-label-row span:first-child { font-weight: 500; color: var(--text); }
+    .bar-label-row span:last-child { font-family: var(--font-mono); color: var(--green); }
+    .bar-track {
+      height: 8px; background: var(--border); border-radius: 99px; overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%; background: linear-gradient(90deg, var(--green-dim), var(--green));
+      border-radius: 99px; transition: width .6s cubic-bezier(.4,0,.2,1);
+      width: 0%;
+    }
+    .bar-fill.dim { background: linear-gradient(90deg, #1e3325, #2a4a32); }
+
+    /* ── Spinner ───────────────────────────────────────────── */
+    .spinner {
+      display: inline-block; width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.15);
+      border-top-color: currentColor;
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+
+    /* ── Footer ────────────────────────────────────────────── */
+    footer {
+      margin-top: 64px; padding-top: 28px;
+      border-top: 1px solid var(--border);
+      text-align: center; font-size: 12px; color: var(--muted);
+      line-height: 2;
+    }
+    footer strong { color: var(--text); }
+
+    /* ── Keyframes ─────────────────────────────────────────── */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: .4; }
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-up { animation: fadeUp .4s ease both; }
+
+    /* ── Responsive ────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .metrics-row { grid-template-columns: repeat(2, 1fr); }
+      header { flex-direction: column; }
+      .meta { text-align: left; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+
+  <div class="wrapper">
+
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <header>
+      <div class="header-left">
+        <div class="header-badge"><span></span> CNN · TensorFlow · CIFAR-10</div>
+        <h1>Automated <em>Animal</em><br>Detection &amp; Identification</h1>
+        <p class="subtitle">A deep-learning system using Convolutional Neural Networks to detect and classify 6 animal species from images in real time.</p>
+      </div>
+      <div class="meta">
+        <strong>shantanu kumar</strong><br>
+        25SCS1003000480<br>
+        Supervisor: Prof. Shantanu bhindewari<br>
+        CSE-AIML · IILM University, Greater Noida
+      </div>
+    </header>
+
+    <!-- ── Species strip ──────────────────────────────────── -->
+    <div class="species-strip">
+      <div class="species-pill">🐦 Bird</div>
+      <div class="species-pill">🐱 Cat</div>
+      <div class="species-pill">🦌 Deer</div>
+      <div class="species-pill">🐶 Dog</div>
+      <div class="species-pill">🐸 Frog</div>
+      <div class="species-pill">🐴 Horse</div>
+    </div>
+
+    <!-- ── Main Grid ───────────────────────────────────────── -->
+    <div class="main-grid">
+
+      <!-- ── Left: Training ────────────────────────────────── -->
+      <div class="card fade-up" style="animation-delay:.05s">
+        <div class="section-label">Step 1</div>
+        <div class="card-title">Train the Model</div>
+        <div class="card-desc">Trains a CNN on the CIFAR-10 animal subset (~30,000 images). Early-stopping is applied so the best weights are kept automatically.</div>
+
+        <div class="train-actions">
+          <button class="btn btn-primary" id="train-btn" onclick="startTraining()">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Train Model
+          </button>
+          <button class="btn btn-ghost" onclick="refreshStatus()">Refresh</button>
+        </div>
+
+        <div class="status-box" id="status-box">
+          <span class="dot"></span>
+          <span id="status-text">Model not trained yet. Click "Train Model" to begin.</span>
+        </div>
+
+        <div class="epoch-row">
+          <span>Progress</span>
+          <strong id="epoch-text">0 / 30 epochs</strong>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-bar"></div>
+        </div>
+
+        <div class="metrics-row">
+          <div class="metric-box">
+            <div class="metric-value" id="m-tacc">—</div>
+            <div class="metric-label">Train Acc</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-value" id="m-vacc">—</div>
+            <div class="metric-label">Val Acc</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-value" id="m-tloss">—</div>
+            <div class="metric-label">Train Loss</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-value" id="m-vloss">—</div>
+            <div class="metric-label">Val Loss</div>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-bottom:10px">Training Log</div>
+        <div class="console" id="log-console">Waiting for training to start…</div>
+      </div>
+
+      <!-- ── Right: Predict ─────────────────────────────────── -->
+      <div class="card fade-up" style="animation-delay:.12s">
+        <div class="section-label">Step 2</div>
+        <div class="card-title">Identify an Animal</div>
+        <div class="card-desc">Upload any image — the model will classify it as one of the 6 species, or warn you if it doesn't recognise an animal.</div>
+
+        <!-- Drop zone -->
+        <div id="drop-zone"
+             onclick="document.getElementById('file-input').click()"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="handleDrop(event)">
+          <div class="dz-icon">📷</div>
+          <div class="dz-text"><strong>Click to upload</strong> or drag &amp; drop</div>
+          <div class="dz-text" style="margin-top:6px;font-size:12px">JPG, PNG, WEBP · any size</div>
+        </div>
+        <input type="file" id="file-input" accept="image/*" onchange="handleFileSelect(event)" />
+
+        <!-- Preview -->
+        <div id="preview-wrap">
+          <img id="preview-img" src="" alt="Preview" />
+        </div>
+
+        <!-- Predict button -->
+        <button class="btn btn-primary" id="predict-btn" onclick="runPrediction()" style="width:100%;justify-content:center;margin-bottom:20px" disabled>
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Identify Animal
+        </button>
+
+        <!-- Warning -->
+        <div class="warning-box" id="warn-box">
+          ⚠️ <strong>Low confidence</strong> — this image may not be an animal or image quality is poor.
+        </div>
+
+        <!-- Result -->
+        <div id="result-panel">
+          <div class="result-hero" id="result-hero">
+            <div class="result-icon" id="result-icon">🐾</div>
+            <div>
+              <div class="result-name" id="result-name">—</div>
+              <div class="result-conf">Confidence: <strong id="result-conf">—</strong></div>
+            </div>
+          </div>
+
+          <div class="section-label" style="margin-bottom:14px">All Species Probabilities</div>
+          <div class="bar-list" id="bar-list"></div>
+        </div>
+
+      </div>
+    </div><!-- /main-grid -->
+
+    <!-- ── Footer ─────────────────────────────────────────── -->
+    <footer>
+      <strong>Automated Animal Detection &amp; Species Identification</strong><br>
+      CNN · TensorFlow · CIFAR-10 · Flask<br>
+      <strong>Shantanu Kumar</strong> · 25SCS1003000480 · CSE-AIML<br>
+      Supervisor: <strong>Prof. Shantanu bhindewari</strong> · IILM University, Greater Noida
+    </footer>
+
+  </div><!-- /wrapper -->
+
+  <!-- ── JavaScript ──────────────────────────────────────────────────────── -->
+  <script>
+    /* ── State ─────────────────────────────────────────────── */
+    let selectedFile = null;
+    let sseSource    = null;
+    let isTraining   = false;
+
+    /* ── Helpers ───────────────────────────────────────────── */
+    const $  = id => document.getElementById(id);
+    const pct = (v, tot) => tot > 0 ? Math.round(v / tot * 100) : 0;
+
+    function fmt(n, dec = 1) {
+      return (typeof n === 'number') ? n.toFixed(dec) + '%' : '—';
+    }
+
+    function appendLog(line) {
+      const c = $('log-console');
+      c.textContent += line + '\n';
+      c.scrollTop = c.scrollHeight;
+    }
+
+    /* ── Status rendering ──────────────────────────────────── */
+    function renderStatus(s) {
+      const box = $('status-box');
+      const txt = $('status-text');
+
+      box.className = 'status-box ' + (s.state || '');
+      txt.textContent = s.message || '—';
+
+      // epoch + progress
+      const ep  = s.epoch       || 0;
+      const tot = s.total_epochs || 30;
+      $('epoch-text').textContent  = `${ep} / ${tot} epochs`;
+      $('progress-bar').style.width = pct(ep, tot) + '%';
+
+      // metrics
+      $('m-tacc').textContent  = s.train_acc  ? s.train_acc.toFixed(1) + '%' : '—';
+      $('m-vacc').textContent  = s.val_acc    ? s.val_acc.toFixed(1)   + '%' : '—';
+      $('m-tloss').textContent = s.train_loss ? s.train_loss.toFixed(4)     : '—';
+      $('m-vloss').textContent = s.val_loss   ? s.val_loss.toFixed(4)       : '—';
+
+      // button state
+      const trainBtn = $('train-btn');
+      if (s.state === 'training') {
+        trainBtn.disabled = true;
+        trainBtn.innerHTML = '<span class="spinner"></span> Training…';
+        isTraining = true;
+      } else {
+        trainBtn.disabled = false;
+        trainBtn.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> ' +
+          (s.state === 'done' ? 'Retrain Model' : 'Train Model');
+        isTraining = false;
+      }
+    }
+
+    /* ── SSE stream ────────────────────────────────────────── */
+    function openSSE() {
+      if (sseSource) { sseSource.close(); sseSource = null; }
+      sseSource = new EventSource('/api/status/stream');
+      let lastLogLen = 0;
+
+      sseSource.onmessage = e => {
+        const s = JSON.parse(e.data);
+        renderStatus(s);
+
+        // append new log lines
+        if (s.log && s.log.length > lastLogLen) {
+          s.log.slice(lastLogLen).forEach(line => appendLog(line));
+          lastLogLen = s.log.length;
+        }
+
+        if (s.state === 'done' || s.state === 'error') {
+          sseSource.close(); sseSource = null;
+        }
+      };
+      sseSource.onerror = () => {
+        if (sseSource) { sseSource.close(); sseSource = null; }
+        refreshStatus();
+      };
+    }
+
+    /* ── Train ─────────────────────────────────────────────── */
+    async function startTraining() {
+      $('log-console').textContent = '';
+      const r = await fetch('/api/train', { method: 'POST' });
+      const d = await r.json();
+      if (!d.ok) { alert(d.msg); return; }
+      openSSE();
+    }
+
+    async function refreshStatus() {
+      const r = await fetch('/api/status');
+      const s = await r.json();
+      renderStatus(s);
+      if (s.log) {
+        $('log-console').textContent = '';
+        s.log.forEach(line => appendLog(line));
+      }
+    }
+
+    /* ── File handling ─────────────────────────────────────── */
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (file) loadFile(file);
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      $('drop-zone').classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) loadFile(file);
+    }
+
+    function loadFile(file) {
+      selectedFile = file;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        $('preview-img').src = ev.target.result;
+        $('preview-wrap').style.display = 'block';
+        $('drop-zone').style.display = 'none';
+        $('predict-btn').disabled = false;
+        $('result-panel').style.display = 'none';
+        $('warn-box').style.display     = 'none';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    /* ── Predict ───────────────────────────────────────────── */
+    async function runPrediction() {
+      if (!selectedFile) return;
+
+      const btn = $('predict-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Analysing…';
+
+      const fd = new FormData();
+      fd.append('file', selectedFile);
+
+      try {
+        const r = await fetch('/api/predict', { method: 'POST', body: fd });
+        const d = await r.json();
+
+        if (!d.ok) {
+          alert('Error: ' + d.msg);
+          btn.disabled = false;
+          btn.innerHTML = `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Identify Animal`;
+          return;
+        }
+
+        // show warning if needed
+        $('warn-box').style.display = d.is_animal ? 'none' : 'block';
+
+        // hero
+        $('result-icon').textContent = d.icon;
+        $('result-name').textContent = d.predicted;
+        $('result-conf').textContent = d.confidence.toFixed(1) + '%';
+
+        // bars
+        const list = $('bar-list');
+        list.innerHTML = '';
+        d.all_predictions.forEach((p, i) => {
+          const isTop = i === 0;
+          list.innerHTML += `
+            <div class="bar-row fade-up" style="animation-delay:${i * 0.06}s">
+              <div class="bar-label-row">
+                <span>${p.icon} ${p.label.charAt(0).toUpperCase() + p.label.slice(1)}</span>
+                <span>${p.confidence.toFixed(1)}%</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill ${isTop ? '' : 'dim'}" data-w="${p.confidence}" style="width:0%"></div>
+              </div>
+            </div>`;
+        });
+
+        $('result-panel').style.display = 'block';
+
+        // animate bars after render
+        requestAnimationFrame(() => {
+          document.querySelectorAll('.bar-fill').forEach(el => {
+            el.style.width = el.dataset.w + '%';
+          });
+        });
+
+      } catch (err) {
+        alert('Network error: ' + err.message);
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Identify Another`;
+      btn.onclick = () => {
+        $('drop-zone').style.display  = 'block';
+        $('preview-wrap').style.display = 'none';
+        $('result-panel').style.display = 'none';
+        $('warn-box').style.display     = 'none';
+        selectedFile = null;
+        btn.disabled = true;
+        btn.innerHTML = `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Identify Animal`;
+        btn.onclick = runPrediction;
+        $('file-input').value = '';
+      };
+    }
+
+    /* ── Init ──────────────────────────────────────────────── */
+    window.addEventListener('DOMContentLoaded', () => {
+      refreshStatus();
+      // If already training from a previous session, start SSE
+      fetch('/api/status').then(r => r.json()).then(s => {
+        if (s.state === 'training') openSSE();
+      });
+    });
+  </script>
+</body>
+</html>
